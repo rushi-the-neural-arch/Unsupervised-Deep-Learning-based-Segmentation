@@ -30,7 +30,7 @@ parser.add_argument('--num_superpixels', metavar='K', default=10000, type=int,
                     help='number of superpixels')
 parser.add_argument('--compactness', metavar='C', default=100, type=float, 
                     help='compactness of superpixels')
-parser.add_argument('--visualize', metavar='1 or 0', default=1, type=int, 
+parser.add_argument('--visualize', metavar='1 or 0', default=0, type=int, 
                     help='visualization flag')
 parser.add_argument('--input', metavar='FILENAME',
                     help='input image file name', required=True)
@@ -83,7 +83,9 @@ if use_cuda:
     model.cuda()
 model.train()
 loss_fn = torch.nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
+#optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
+optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
 label_colours = np.random.randint(255,size=(100,3))
 for batch_idx in range(args.maxIter):
     # forwarding
@@ -99,7 +101,7 @@ for batch_idx in range(args.maxIter):
         #cv2_imshow( "output", im_target_rgb )
         #cv2.waitKey(10)
         cv2_imshow(im_target_rgb )
-
+  
     # superpixel refinement
     # TODO: use Torch Variable instead of numpy for faster calculation
     for i in range(len(l_inds)):
