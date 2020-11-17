@@ -11,6 +11,8 @@ import numpy as np
 from skimage import segmentation
 import torch.nn.init
 
+from pathlib import Path
+
 from google.colab.patches import cv2_imshow
 
 use_cuda = torch.cuda.is_available()
@@ -66,6 +68,7 @@ class MyNet(nn.Module):
 im = cv2.imread(args.input)
 data = torch.from_numpy( np.array([im.transpose( (2, 0, 1) ).astype('float32')/255.]) )
 if use_cuda:
+    print("CUDA DATA")
     data = data.cuda()
 data = Variable(data)
 
@@ -80,6 +83,7 @@ for i in range(len(u_labels)):
 # train
 model = MyNet( data.size(1) )
 if use_cuda:
+    print("CUDA MODEL")
     model.cuda()
 model.train()
 loss_fn = torch.nn.CrossEntropyLoss()
@@ -121,6 +125,10 @@ for batch_idx in range(args.maxIter):
 
     #print (batch_idx, '/', args.maxIter, ':', nLabels, loss.data[0])
     print (batch_idx, '/', args.maxIter, ':', nLabels, loss.item())
+
+    PATH = 'model.pth'
+    torch.save(model.state_dict(), PATH)
+
 
     if nLabels <= args.minLabels:
         print ("nLabels", nLabels, "reached minLabels", args.minLabels, ".")
