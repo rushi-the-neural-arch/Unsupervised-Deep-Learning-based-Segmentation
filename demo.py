@@ -17,6 +17,8 @@ from google.colab.patches import cv2_imshow
 
 use_cuda = torch.cuda.is_available()
 
+
+
 parser = argparse.ArgumentParser(description='PyTorch Unsupervised Segmentation')
 parser.add_argument('--nChannel', metavar='N', default=100, type=int, 
                     help='number of channels')
@@ -66,6 +68,7 @@ class MyNet(nn.Module):
 
 # load image
 im = cv2.imread(args.input)
+#im = cv2.GaussianBlur(im, (5,5), 1, 1)
 data = torch.from_numpy( np.array([im.transpose( (2, 0, 1) ).astype('float32')/255.]) )
 if use_cuda:
     print("CUDA DATA")
@@ -73,7 +76,21 @@ if use_cuda:
 data = Variable(data)
 
 # slic
+import time
+start = time.time()
 labels = segmentation.slic(im, compactness=args.compactness, n_segments=args.num_superpixels)
+print("TIME TAKEN SLIC: ", time.time() - start)
+# Grey scale im
+# Do Canny
+# Get B&W Edge Map 
+# Get Labels for that 
+# Every Edge Component a Different Label
+
+bw = cv2.Canny(im, 10, 200) 
+from skimage.measure import label 
+bw_label = label(bw) 
+labels[bw == 255] = bw_label[bw == 255] + np.max(labels) 
+
 labels = labels.reshape(im.shape[0]*im.shape[1])
 u_labels = np.unique(labels)
 l_inds = []
@@ -85,21 +102,23 @@ model = MyNet( data.size(1) )
 if use_cuda:
     print("CUDA MODEL")
     model.cuda()
-model.train()
+model.train() 
 loss_fn = torch.nn.CrossEntropyLoss()
 #optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience = 5, verbose = True)
 
 label_colours = np.random.randint(255,size=(100,3))
+
 for batch_idx in range(args.maxIter):
     # forwarding
-    optimizer.zero_grad()
+    optimizer.zero_grad() 
     output = model( data )[ 0 ]
     output = output.permute( 1, 2, 0 ).contiguous().view( -1, args.nChannel )
-    ignore, target = torch.max( output, 1 )
+    ignore, target = torch.max( output, 1 ) 
     im_target = target.data.cpu().numpy()
     nLabels = len(np.unique(im_target))
-    if args.visualize:
+    if args.visualize: 
         im_target_rgb = np.array([label_colours[ c % 100 ] for c in im_target])
         im_target_rgb = im_target_rgb.reshape( im.shape ).astype( np.uint8 )
         #cv2_imshow( "output", im_target_rgb )
@@ -122,6 +141,7 @@ for batch_idx in range(args.maxIter):
     loss = loss_fn(output, target)
     loss.backward()
     optimizer.step()
+    scheduler.step(loss)
 
     #print (batch_idx, '/', args.maxIter, ':', nLabels, loss.data[0])
     print (batch_idx, '/', args.maxIter, ':', nLabels, loss.item())
@@ -134,12 +154,25 @@ for batch_idx in range(args.maxIter):
         print ("nLabels", nLabels, "reached minLabels", args.minLabels, ".")
         break
 
+from skimage.color import label2rgb
 # save output image
 if not args.visualize:
     output = model( data )[ 0 ]
     output = output.permute( 1, 2, 0 ).contiguous().view( -1, args.nChannel )
     ignore, target = torch.max( output, 1 )
     im_target = target.data.cpu().numpy()
-    im_target_rgb = np.array([label_colours[ c % 100 ] for c in im_target])
-    im_target_rgb = im_target_rgb.reshape( im.shape ).astype( np.uint8 )
+    im_target = im_target.reshape( im.shape[:-1] )
+
+    target_label = np.array([label_colours[ c % 100 ] for c in im_target])
+
+    im_target_rgb = label2rgb(im_target, image=im,  kind = 'avg').astype( np.uint8 )
+    #im_target_label = label2rgb(im_target, bg_label = 0).astype( np.uint8 )
+
+    combined = np.hstack((im_target_rgb, target_label))
+
+    target_label = target_label.reshape( im.shape ).astype( np.uint8 )
 cv2.imwrite( "output.png", im_target_rgb )
+cv2.imwrite("Label.png", target_label)
+
+cv2.imwrite("Combined.png", combined)
+
