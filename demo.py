@@ -13,10 +13,8 @@ import torch.nn.init
 
 from pathlib import Path
 
-from google.colab.patches import cv2_imshow
 
 use_cuda = torch.cuda.is_available()
-
 
 
 parser = argparse.ArgumentParser(description='PyTorch Unsupervised Segmentation')
@@ -39,6 +37,7 @@ parser.add_argument('--visualize', metavar='1 or 0', default=0, type=int,
 parser.add_argument('--input', metavar='FILENAME',
                     help='input image file name', required=True)
 args = parser.parse_args()
+
 
 # CNN model
 class MyNet(nn.Module):
@@ -65,11 +64,15 @@ class MyNet(nn.Module):
         x = self.conv3(x)
         x = self.bn3(x)
         return x
+    
 
 # load image
 im = cv2.imread(args.input)
+im_rgb = cv2.imread(args.input)
 #im = cv2.GaussianBlur(im, (5,5), 1, 1)
+
 data = torch.from_numpy( np.array([im.transpose( (2, 0, 1) ).astype('float32')/255.]) )
+
 if use_cuda:
     print("CUDA DATA")
     data = data.cuda()
@@ -78,18 +81,27 @@ data = Variable(data)
 # slic
 import time
 start = time.time()
-labels = segmentation.slic(im, compactness=args.compactness, n_segments=args.num_superpixels)
+
+im = cv2.cvtColor(im, cv2.COLOR_BGR2LAB )
+
+#labels = SlicAvx2(num_components=10000, compactness=args.compactness,  num_threads=4)
+
+labels = segmentation.slic(im, compactness=args.compactness, n_segments=args.num_superpixels, min_size_factor=0.1)
 print("TIME TAKEN SLIC: ", time.time() - start)
+
+######################## Considering EDGE INFORMATION ######################
 # Grey scale im
 # Do Canny
 # Get B&W Edge Map 
 # Get Labels for that 
 # Every Edge Component a Different Label
 
-bw = cv2.Canny(im, 10, 200) 
-from skimage.measure import label 
-bw_label = label(bw) 
-labels[bw == 255] = bw_label[bw == 255] + np.max(labels) 
+# bw = cv2.Canny(im, 10, 200) 
+# from skimage.measure import label 
+# bw_label = label(bw) 
+# labels[bw == 255] = bw_label[bw == 255] + np.max(labels) 
+
+##########################################################################
 
 labels = labels.reshape(im.shape[0]*im.shape[1])
 u_labels = np.unique(labels)
@@ -113,6 +125,9 @@ label_colours = np.random.randint(255,size=(100,3))
 for batch_idx in range(args.maxIter):
     # forwarding
     optimizer.zero_grad() 
+    
+    start_t = time.time()
+    
     output = model( data )[ 0 ]
     output = output.permute( 1, 2, 0 ).contiguous().view( -1, args.nChannel )
     ignore, target = torch.max( output, 1 ) 
@@ -144,7 +159,7 @@ for batch_idx in range(args.maxIter):
     scheduler.step(loss)
 
     #print (batch_idx, '/', args.maxIter, ':', nLabels, loss.data[0])
-    print (batch_idx, '/', args.maxIter, ':', nLabels, loss.item())
+    print (batch_idx, '/', args.maxIter, ':', nLabels, loss.item(), time.time() - start_t)
 
     PATH = 'model.pth'
     torch.save(model.state_dict(), PATH)
@@ -165,14 +180,17 @@ if not args.visualize:
 
     target_label = np.array([label_colours[ c % 100 ] for c in im_target])
 
-    im_target_rgb = label2rgb(im_target, image=im,  kind = 'avg').astype( np.uint8 )
+    im_target_rgb = label2rgb(im_target, image=im_rgb,  kind = 'avg').astype( np.uint8 )
     #im_target_label = label2rgb(im_target, bg_label = 0).astype( np.uint8 )
 
     combined = np.hstack((im_target_rgb, target_label))
+    
+    combined_orig_out = np.hstack((im_rgb, im_target_rgb))
 
     target_label = target_label.reshape( im.shape ).astype( np.uint8 )
 cv2.imwrite( "output.png", im_target_rgb )
 cv2.imwrite("Label.png", target_label)
 
 cv2.imwrite("Combined.png", combined)
+cv2.imwrite("ORIG-Compressed.png", combined_orig_out)
 
