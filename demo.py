@@ -69,6 +69,9 @@ class MyNet(nn.Module):
 # load image
 im = cv2.imread(args.input)
 im_rgb = cv2.imread(args.input)
+
+#norm_img = np.zeros(im.shape)
+
 #im = cv2.GaussianBlur(im, (5,5), 1, 1)
 
 data = torch.from_numpy( np.array([im.transpose( (2, 0, 1) ).astype('float32')/255.]) )
@@ -175,12 +178,14 @@ if not args.visualize:
     output = model( data )[ 0 ]
     output = output.permute( 1, 2, 0 ).contiguous().view( -1, args.nChannel )
     ignore, target = torch.max( output, 1 )
+    
     im_target = target.data.cpu().numpy()
     im_target = im_target.reshape( im.shape[:-1] )
+    np.save('label.npy', im_target)
 
     target_label = np.array([label_colours[ c % 100 ] for c in im_target])
-
-    im_target_rgb = label2rgb(im_target, image=im_rgb,  kind = 'avg').astype( np.uint8 )
+   
+    im_target_rgb = label2rgb(im_target, image=im_rgb,  kind = 'avg', bg_label = -1).astype( np.uint8 )
     #im_target_label = label2rgb(im_target, bg_label = 0).astype( np.uint8 )
 
     combined = np.hstack((im_target_rgb, target_label))
@@ -188,6 +193,8 @@ if not args.visualize:
     combined_orig_out = np.hstack((im_rgb, im_target_rgb))
 
     target_label = target_label.reshape( im.shape ).astype( np.uint8 )
+    
+cv2.imwrite("PostProcessing.jpg", im_target)
 cv2.imwrite( "output.png", im_target_rgb )
 cv2.imwrite("Label.png", target_label)
 
