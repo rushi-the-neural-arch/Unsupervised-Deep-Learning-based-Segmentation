@@ -1,4 +1,4 @@
-# Unsupervised Segmentation 
+# Unsupervised Image Segmentation 
 
 ## Requirements
 
